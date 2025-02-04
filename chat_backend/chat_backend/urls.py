@@ -15,4 +15,6 @@ urlpatterns = [
     path('api/messages/<int:user_id>/', views.get_chat_messages),
     path('api/login/', views.login_user),
     path('', home),  # Root URL
+    path('api/forgot-password/', views.forgot_password),
+    path('api/reset-password/', views.reset_password),
 ]
