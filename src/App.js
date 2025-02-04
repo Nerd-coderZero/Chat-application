@@ -5,7 +5,7 @@ import { loginUser } from './services/api';
 import { handleResponsiveScaling } from './utils/responsive';
 
 
-
+<Route path="/forgot-password" element={<ForgotPassword />} />
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token'));
