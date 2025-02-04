@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom'; // Import routing components!!!
 import Layout from './components/Layout';
 import Login from './components/Login';
 import { loginUser } from './services/api';
 import { handleResponsiveScaling } from './utils/responsive';
+import ForgotPassword from './components/ForgotPassword';
 
-
-<Route path="/forgot-password" element={<ForgotPassword />} />
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token'));
@@ -54,17 +54,22 @@ function App() {
   };
 
   return (
-    <div>
-      {token ? (
-        <Layout
-          token={token}
-          currentUser={currentUser}
-          onLogout={handleLogout}
-        />
-      ) : (
-        <Login onLogin={handleLogin} error={error} /> // Now error is correctly passed
-      )}
-    </div>
+    <BrowserRouter> {/* Wrap your app with BrowserRouter */}
+      <Routes> {/* Use Routes to define your routes */}
+        <Route path="/" element={
+          token ? (
+            <Layout
+              token={token}
+              currentUser={currentUser}
+              onLogout={handleLogout}
+            />
+          ) : (
+            <Login onLogin={handleLogin} error={error} />
+          )
+        } /> {/* Main route (either Login or Layout) */}
+        <Route path="/forgot-password" element={<ForgotPassword />} /> {/* Forgot Password route */}
+      </Routes>
+    </BrowserRouter>
   );
 }
 
