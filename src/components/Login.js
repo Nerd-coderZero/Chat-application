@@ -50,6 +50,11 @@ const Login = ({ onLogin, error }) => {
                     >
                         Login
                     </button>
+                    <div className="text-center mt-4">
+                        <Link to="/forgot-password" className="text-blue-600 hover:text-blue-500">
+                        Forgot Password?
+                      </Link>
+                    </div>
                 </form>
             </div>
         </div>
