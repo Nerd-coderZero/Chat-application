@@ -19,7 +19,7 @@ ALLOWED_HOSTS = [
     'kjzero.pythonanywhere.com',
     'localhost',
     '127.0.0.1',
-    'chat-websocket-service-u4r0.onrender.com'
+    'chat-websocket-service-0o66.onrender.com'
 ]
 
 
@@ -84,7 +84,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
     "http://localhost:3000",
     "https://sage-puppy-7cf38f.netlify.app",
-    "https://chat-websocket-service-u4r0.onrender.com"
+    "https://chat-websocket-service-0o66.onrender.com"
 ]
 
 CORS_ALLOW_METHODS = [
@@ -180,7 +180,7 @@ USE_TZ = True
 
 # Add these settings
 STATIC_URL = '/static/'
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATIC_ROOT = '/home/KJZERO/mysite/chat-application/chat_backend/static'
 STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'static')
 ]
