@@ -1,0 +1,7 @@
+Django
+channels
+channels-redis
+gunicorn
+whitenoise
+psycopg2
+django-environ
