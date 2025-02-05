@@ -1,4 +1,3 @@
-// src/services/websocketService.js
 import config from '../config/environment';
 
 class WebSocketService {
@@ -12,7 +11,6 @@ class WebSocketService {
     connect(roomId, token, onMessage, onConnectionChange, onError) {
         this.disconnect();
         try {
-            // Use the Django Channels WebSocket URL format
             const wsUrl = `${config.REACT_APP_WS_URL}/ws/chat/${roomId}/?token=${token}`;
             console.log('Connecting to WebSocket:', wsUrl);
             
@@ -20,6 +18,11 @@ class WebSocketService {
 
             this.ws.onopen = () => {
                 console.log('WebSocket connected');
+                // Send authentication message immediately after connection
+                this.ws.send(JSON.stringify({
+                    type: 'authentication',
+                    token: token
+                }));
                 onConnectionChange(true);
                 this.reconnectAttempts = 0;
             };
@@ -28,6 +31,19 @@ class WebSocketService {
                 try {
                     const data = JSON.parse(event.data);
                     console.log('Received WebSocket message:', data);
+                    
+                    // Handle authentication response
+                    if (data.type === 'authentication_response') {
+                        if (data.status === 'success') {
+                            console.log('Authentication successful');
+                        } else {
+                            console.error('Authentication failed:', data.message);
+                            onError(data.message || 'Authentication failed');
+                            this.disconnect();
+                        }
+                        return;
+                    }
+                    
                     onMessage(data);
                 } catch (error) {
                     console.error('Failed to process message:', error);
@@ -58,9 +74,10 @@ class WebSocketService {
             console.log(`Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
             onError(`Connection lost. Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
             
+            const backoffTime = Math.min(5000 * Math.pow(2, this.reconnectAttempts - 1), 30000);
             this.reconnectTimeout = setTimeout(() => {
                 this.connect(roomId, token, onMessage, onConnectionChange, onError);
-            }, 5000 * Math.min(this.reconnectAttempts, 3)); // Exponential backoff up to 15 seconds
+            }, backoffTime);
         } else {
             onError('Could not reconnect to the chat server. Please refresh the page.');
         }
@@ -69,7 +86,10 @@ class WebSocketService {
     sendMessage(message) {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             console.log('Sending message:', message);
-            this.ws.send(JSON.stringify(message));
+            this.ws.send(JSON.stringify({
+                type: 'chat_message',
+                ...message
+            }));
             return true;
         }
         return false;
