@@ -1,4 +1,4 @@
-# chat/consumers.py
+# consumers.py
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
@@ -9,35 +9,31 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.room_name = self.scope['url_route']['kwargs']['room_name']
         self.room_group_name = f'chat_{self.room_name}'
-        self.user = self.scope["user"]
 
-        # Reject the connection if user is not authenticated
-        if self.user.is_anonymous:
+        # Authentication check moved to connect method
+        if self.scope["user"].is_anonymous: # check if user is anonymous
             await self.close()
             return
 
-        # Join room group
         await self.channel_layer.group_add(
             self.room_group_name,
             self.channel_name
         )
         await self.accept()
 
-        # Send connection confirmation
         await self.send(text_data=json.dumps({
             'type': 'connection_established',
             'message': 'Connected to chat server'
         }))
 
     async def disconnect(self, close_code):
-        # Leave room group
         try:
             await self.channel_layer.group_discard(
                 self.room_group_name,
                 self.channel_name
             )
-        except:
-            pass
+        except Exception as e:
+            print(f"Error in disconnect: {e}") # Print the exception for debugging
 
     @database_sync_to_async
     def save_message(self, sender, receiver, message):
@@ -49,33 +45,42 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 receiver=receiver_user,
                 message=message
             )
+            return True # Return True on successful save
         except Exception as e:
             print(f"Error saving message: {e}")
-            return False
-        return True
+            return False  # Return False if save fails
 
     async def receive(self, text_data):
         try:
             data = json.loads(text_data)
-            message = data['message']
-            receiver_id = data['receiver_id']
+            message = data.get('message')  # Use .get() to avoid KeyError
+            receiver_id = data.get('receiver_id')  # Use .get()
             sender_id = self.scope["user"].id
 
-            # Save message to database
-            success = await self.save_message(sender_id, receiver_id, message)
-            
-            if success:
-                # Send message to room group
-                await self.channel_layer.group_send(
-                    self.room_group_name,
-                    {
-                        'type': 'chat_message',
-                        'message': message,
-                        'sender': sender_id
-                    }
-                )
-        except Exception as e:
-            # Send error message back to client
+            if message and receiver_id: # Check if both message and receiver_id are present
+                success = await self.save_message(sender_id, receiver_id, message)
+
+                if success:
+                    await self.channel_layer.group_send(
+                        self.room_group_name,
+                        {
+                            'type': 'chat_message',
+                            'message': message,
+                            'sender': sender_id
+                        }
+                    )
+            else:
+                await self.send(text_data=json.dumps({
+                    'type': 'error',
+                    'message': "Message or receiver_id is missing"
+                }))
+
+        except json.JSONDecodeError: # Handle JSON decode errors
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': "Invalid JSON data"
+            }))
+        except Exception as e: # Catch any other exceptions
             await self.send(text_data=json.dumps({
                 'type': 'error',
                 'message': str(e)
@@ -85,7 +90,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         message = event['message']
         sender = event['sender']
 
-        # Send message to WebSocket
         await self.send(text_data=json.dumps({
             'type': 'chat_message',
             'message': message,
