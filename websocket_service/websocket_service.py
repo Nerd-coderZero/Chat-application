@@ -36,77 +36,66 @@ class ChatWebSocket:
             logger.error(f"Error verifying token: {str(e)}")
             return None
 
-    async def handler(self, websocket, path):
-        room_name = None
-        try:
-            # Extract room_name from path
-            room_name = path.split('/')[-2]
-            logger.info(f"New connection attempt for room: {room_name}")
+async def handler(self, websocket, path):
+    room_name = None
+    try:
+        # Extract room_name and token from path
+        room_name = path.split('/')[-2]
+        query_params = parse_qs(websocket.path_params['query_string'].decode())
+        token = query_params.get('token', [None])[0]
+        
+        logger.info(f"New connection attempt for room: {room_name}")
+        
+        if not token:
+            logger.error("No token in URL parameters")
+            await websocket.close(1008, 'No token in URL parameters')
+            return
 
-            # Wait for authentication message
+        # Verify token immediately
+        user_data = await self.verify_token(token)
+        if not user_data:
+            logger.error("Invalid token in URL parameters")
+            await websocket.close(1008, 'Invalid token')
+            return
+
+        # Register connection
+        if room_name not in self.connections:
+            self.connections[room_name] = set()
+        self.connections[room_name].add(websocket)
+        logger.info(f"Connection registered for room {room_name}")
+
+        # Send connection confirmation
+        await websocket.send(json.dumps({
+            'type': 'connection_established',
+            'message': 'Connected to chat server',
+            'user': user_data
+        }))
+
+        # Message handling loop
+        async for message in websocket:
             try:
-                auth_message = await asyncio.wait_for(websocket.recv(), timeout=10.0)
-                auth_data = json.loads(auth_message)
-                token = auth_data.get('token')
+                data = json.loads(message)
+                logger.info(f"Received message in room {room_name}")
                 
-                if not token:
-                    logger.error("No token provided")
-                    await websocket.close(1008, 'No token provided')
-                    return
-                
-                logger.info(f"Received token: {token[:10]}...")
-            except asyncio.TimeoutError:
-                logger.error("Authentication timeout")
-                await websocket.close(1008, 'Authentication timeout')
-                return
-            except json.JSONDecodeError:
-                logger.error("Invalid authentication message format")
-                await websocket.close(1008, 'Invalid authentication message')
-                return
-
-            # Verify token
-            user_data = await self.verify_token(token)
-            if not user_data:
-                logger.error("Invalid token")
-                await websocket.close(1008, 'Invalid token')
-                return
-
-            # Register connection
-            if room_name not in self.connections:
-                self.connections[room_name] = set()
-            self.connections[room_name].add(websocket)
-            logger.info(f"Connection registered for room {room_name}")
-
-            # Send connection confirmation
-            await websocket.send(json.dumps({
-                'type': 'connection_established',
-                'message': 'Connected to chat server'
-            }))
-
-            # Message handling loop
-            async for message in websocket:
-                try:
-                    data = json.loads(message)
-                    logger.info(f"Received message in room {room_name}")
-                    
+                if data.get('type') == 'chat_message':
                     await self.broadcast_message(room_name, {
                         'type': 'chat_message',
                         'message': data['message'],
                         'sender': user_data['id']
                     })
-                except json.JSONDecodeError:
-                    logger.error("Invalid message format received")
-                    continue
+            except json.JSONDecodeError:
+                logger.error("Invalid message format received")
+                continue
 
-        except websockets.exceptions.ConnectionClosed:
-            logger.info(f"Connection closed for room: {room_name}")
-        except Exception as e:
-            logger.error(f"Error in handler: {str(e)}")
-        finally:
-            if room_name and room_name in self.connections:
-                self.connections[room_name].discard(websocket)
-                if not self.connections[room_name]:
-                    del self.connections[room_name]
+    except websockets.exceptions.ConnectionClosed:
+        logger.info(f"Connection closed for room: {room_name}")
+    except Exception as e:
+        logger.error(f"Error in handler: {str(e)}")
+    finally:
+        if room_name and room_name in self.connections:
+            self.connections[room_name].discard(websocket)
+            if not self.connections[room_name]:
+                del self.connections[room_name]
 
     async def broadcast_message(self, room_name, message):
         if room_name in self.connections:
