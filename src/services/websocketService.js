@@ -18,11 +18,6 @@ class WebSocketService {
 
             this.ws.onopen = () => {
                 console.log('WebSocket connected');
-                // Send authentication message immediately after connection
-                this.ws.send(JSON.stringify({
-                    type: 'authentication',
-                    token: token
-                }));
                 onConnectionChange(true);
                 this.reconnectAttempts = 0;
             };
@@ -32,19 +27,13 @@ class WebSocketService {
                     const data = JSON.parse(event.data);
                     console.log('Received WebSocket message:', data);
                     
-                    // Handle authentication response
-                    if (data.type === 'authentication_response') {
-                        if (data.status === 'success') {
-                            console.log('Authentication successful');
-                        } else {
-                            console.error('Authentication failed:', data.message);
-                            onError(data.message || 'Authentication failed');
-                            this.disconnect();
-                        }
-                        return;
+                    if (data.type === 'chat_message') {
+                        onMessage(data);
+                    } else if (data.type === 'connection_established') {
+                        console.log('Connection established with server');
+                    } else {
+                        console.log('Received unknown message type:', data.type);
                     }
-                    
-                    onMessage(data);
                 } catch (error) {
                     console.error('Failed to process message:', error);
                 }
@@ -68,31 +57,33 @@ class WebSocketService {
         }
     }
 
+    sendMessage(message) {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            console.log('Sending message:', message);
+            // Ensure message has the correct structure
+            const messageData = {
+                type: 'chat_message',
+                message: message.message,
+                receiver_id: message.receiver_id
+            };
+            this.ws.send(JSON.stringify(messageData));
+            return true;
+        }
+        return false;
+    }
+
     handleReconnection(roomId, token, onMessage, onConnectionChange, onError) {
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
             this.reconnectAttempts++;
             console.log(`Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
             onError(`Connection lost. Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
             
-            const backoffTime = Math.min(5000 * Math.pow(2, this.reconnectAttempts - 1), 30000);
             this.reconnectTimeout = setTimeout(() => {
                 this.connect(roomId, token, onMessage, onConnectionChange, onError);
-            }, backoffTime);
+            }, 5000 * Math.min(this.reconnectAttempts, 3));
         } else {
             onError('Could not reconnect to the chat server. Please refresh the page.');
         }
-    }
-
-    sendMessage(message) {
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            console.log('Sending message:', message);
-            this.ws.send(JSON.stringify({
-                type: 'chat_message',
-                ...message
-            }));
-            return true;
-        }
-        return false;
     }
 
     disconnect() {
