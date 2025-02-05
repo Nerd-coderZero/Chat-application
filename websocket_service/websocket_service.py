@@ -6,7 +6,6 @@ import os
 import aiohttp
 import logging
 from dotenv import load_dotenv
-from urllib.parse import parse_qs
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,25 +23,53 @@ class ChatWebSocket:
 
     async def verify_token(self, token):
         try:
+            if not token:
+                logger.error("No token provided to verify_token method")
+                return None
+    
             headers = {'Authorization': f'Token {token}'}
+            logger.info(f"Attempting to verify token: {token[:10]}...")
+            
             async with aiohttp.ClientSession() as session:
                 async with session.post(f'{self.django_api_url}/api/login/', headers=headers) as response:
+                    logger.info(f"Token verification response status: {response.status}")
+                    
                     if response.status == 200:
                         data = await response.json()
                         logger.info(f"Token verified successfully for user: {data.get('username', 'Unknown')}")
                         return data
-                    logger.error(f"Token verification failed. Status: {response.status}")
-                    return None
-        except Exception as e:
-            logger.error(f"Error verifying token: {str(e)}")
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"Token verification failed. Status: {response.status}, Response: {error_text}")
+                        return None
+        except aiohttp.ClientError as e:
+            logger.error(f"Network error verifying token: {str(e)}")
             return None
-
+        except Exception as e:
+            logger.error(f"Unexpected error verifying token: {str(e)}")
+            return None
+    
     async def handler(self, websocket, path):
         room_name = None
         try:
-            # Extract room_name and token from path
-            room_name = path.split('/')[-2]
-            query_params = parse_qs(websocket.path_params['query_string'].decode())
+            # Extract room_name from path
+            path_parts = path.split('/')
+            room_name = next((part for part in path_parts if part.isdigit()), None)
+            
+            if not room_name:
+                logger.error("No room name found in path")
+                await websocket.close(1008, 'Invalid room name')
+                return
+    
+            # Parse query parameters from the full URL
+            query_string = websocket.request_headers.get('query_string', b'').decode()
+            if not query_string:
+                # Try to get query string from path if not in headers
+                query_string = path.split('?', 1)[1] if '?' in path else ''
+            
+            # Parse query parameters
+            from urllib.parse import parse_qs
+            query_params = parse_qs(query_string)
             token = query_params.get('token', [None])[0]
             
             logger.info(f"New connection attempt for room: {room_name}")
@@ -92,6 +119,8 @@ class ChatWebSocket:
             logger.info(f"Connection closed for room: {room_name}")
         except Exception as e:
             logger.error(f"Error in handler: {str(e)}")
+            logger.error(f"Path: {path}")
+            logger.error(f"Request headers: {getattr(websocket, 'request_headers', {})}")
         finally:
             if room_name and room_name in self.connections:
                 self.connections[room_name].discard(websocket)
